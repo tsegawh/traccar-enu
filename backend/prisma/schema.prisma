@@ -1,0 +1,129 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  subscription Subscription?
+  devices      Device[]
+  payments     Payment[]
+
+  @@map("users")
+}
+
+model SubscriptionPlan {
+  id           String @id @default(cuid())
+  name         String @unique
+  deviceLimit  Int
+  durationDays Int
+  price        Float
+  description  String?
+  isActive     Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  subscriptions Subscription[]
+
+  @@map("subscription_plans")
+}
+
+model Subscription {
+  id        String            @id @default(cuid())
+  userId    String            @unique
+  planId    String
+  status    SubscriptionStatus @default(ACTIVE)
+  startDate DateTime          @default(now())
+  endDate   DateTime
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  // Relations
+  user User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan SubscriptionPlan @relation(fields: [planId], references: [id])
+
+  @@map("subscriptions")
+}
+
+model Device {
+  id          String   @id @default(cuid())
+  userId      String
+  traccarId   Int      @unique
+  name        String
+  uniqueId    String   @unique
+  lastUpdate  DateTime?
+  latitude    Float?
+  longitude   Float?
+  speed       Float?
+  course      Float?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("devices")
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  userId        String
+  orderId       String        @unique
+  amount        Float
+  currency      String        @default("ETB")
+  status        PaymentStatus @default(PENDING)
+  telebirrTxId  String?
+  prepayId      String?
+  paymentMethod String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Settings {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
