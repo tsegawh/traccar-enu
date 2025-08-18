@@ -29,6 +29,7 @@ const io = new Server(server, {
     origin: process.env.NODE_ENV === 'production' 
       ? process.env.FRONTEND_URL 
       : 'http://localhost:5173',
+    'https://263ab849-b245-4311-a786-7563d1dcfb6a-00-,260159f56g1ck.janeway.replit.dev'
     methods: ['GET', 'POST'],
   },
 });
@@ -41,6 +42,8 @@ app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
     ? process.env.FRONTEND_URL 
     : 'http://localhost:5173',
+
+  
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
