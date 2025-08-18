@@ -4,7 +4,7 @@
   "description": "Backend API for Traccar subscription management",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon src/server.ts",
+    "dev": "nodemon --exec tsx src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "db:push": "prisma db push",
