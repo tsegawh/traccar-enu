@@ -1,3 +1,5 @@
+import dotenv from 'dotenv';
+dotenv.config(); 
 import axios, { AxiosInstance } from 'axios';
 
 export interface TraccarDevice {
@@ -35,7 +37,7 @@ export class TraccarService {
   private password: string;
 
   constructor() {
-    this.baseUrl = process.env.TRACCAR_URL || 'http://localhost:8082';
+    this.baseUrl = process.env.TRACCAR_URL
     this.username = process.env.TRACCAR_USER || 'admin';
     this.password = process.env.TRACCAR_PASS || 'admin';
 
