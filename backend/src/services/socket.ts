@@ -157,16 +157,17 @@ function startTraccarWebSocket(io: Server) {
   });
 
   ws.on('error', (error) => {
-    console.error('❌ Traccar WebSocket error:', error);
+    console.error('❌ Traccar WebSocket error:', error.message);
+    // Don't flood console with full error stack
   });
 
   ws.on('close', () => {
     console.log('🔌 Traccar WebSocket connection closed, attempting to reconnect...');
     
-    // Reconnect after 5 seconds
+    // Reconnect after 30 seconds to avoid spam
     setTimeout(() => {
       startTraccarWebSocket(io);
-    }, 5000);
+    }, 30000);
   });
 }
 
