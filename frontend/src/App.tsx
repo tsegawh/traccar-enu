@@ -12,7 +12,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import LoadingSpinner from './components/LoadingSpinner';
 
-// Pages
+// Pages (lazy loaded)
 const Home = React.lazy(() => import('./pages/Home'));
 const Login = React.lazy(() => import('./pages/Login'));
 const Register = React.lazy(() => import('./pages/Register'));
@@ -35,51 +35,53 @@ function App() {
       <AuthProvider>
         <SocketProvider>
           <div className="min-h-screen bg-gray-50">
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/" element={<Home />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/payment/success" element={<PaymentSuccess />} />
-              <Route path="/payment/cancel" element={<PaymentCancel />} />
+            <Suspense fallback={<LoadingSpinner />}>
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/" element={<Home />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/payment/success" element={<PaymentSuccess />} />
+                <Route path="/payment/cancel" element={<PaymentCancel />} />
 
-              {/* Protected Routes */}
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <Layout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<Navigate to="/dashboard" replace />} />
-                <Route path="dashboard" element={<Dashboard />} />
-                <Route path="devices" element={<Devices />} />
+                {/* Protected Routes */}
+                <Route
+                  path="/dashboard/*"
+                  element={
+                    <ProtectedRoute>
+                      <Layout>
+                        <Routes>
+                          <Route index element={<Dashboard />} />
+                          <Route path="devices" element={<Devices />} />
+                        </Routes>
+                      </Layout>
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* Admin Routes */}
                 <Route
-                  path="admin"
+                  path="/admin/*"
                   element={
                     <AdminRoute>
-                      <Suspense fallback={<LoadingSpinner />}>
+                      <Layout>
                         <Routes>
-                          <Route index element={<Navigate to="/admin/dashboard" replace />} />
-                          <Route path="dashboard" element={<AdminDashboard />} />
+                          <Route index element={<AdminDashboard />} />
                           <Route path="users" element={<AdminUsers />} />
                           <Route path="subscriptions" element={<AdminSubscriptions />} />
                           <Route path="devices" element={<AdminDevices />} />
                           <Route path="payments" element={<AdminPayments />} />
                           <Route path="settings" element={<AdminSettings />} />
                         </Routes>
-                      </Suspense>
+                      </Layout>
                     </AdminRoute>
                   }
                 />
-              </Route>
 
-              {/* Catch all route */}
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
+                {/* Catch all */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Suspense>
 
             {/* Toast notifications */}
             <Toaster
@@ -89,21 +91,10 @@ function App() {
                 style: {
                   background: '#fff',
                   color: '#374151',
-                  boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                  boxShadow:
+                    '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
                   border: '1px solid #e5e7eb',
                   borderRadius: '0.75rem',
-                },
-                success: {
-                  iconTheme: {
-                    primary: '#10b981',
-                    secondary: '#fff',
-                  },
-                },
-                error: {
-                  iconTheme: {
-                    primary: '#ef4444',
-                    secondary: '#fff',
-                  },
                 },
               }}
             />

@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Role, SubscriptionStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting database seed...');
 
-  // Create subscription plans
+  // Subscription Plans
   const freePlan = await prisma.subscriptionPlan.upsert({
     where: { name: 'Free' },
     update: {},
@@ -46,33 +46,33 @@ async function main() {
     },
   });
 
-  // Create admin user
-  const hashedPassword = await bcrypt.hash('admin123', 10);
+  // Admin User
+  const hashedAdmin = await bcrypt.hash('admin123', 10);
   const adminUser = await prisma.user.upsert({
     where: { email: 'admin@traccar.com' },
     update: {},
     create: {
       email: 'admin@traccar.com',
-      password: hashedPassword,
+      password: hashedAdmin,
       name: 'Admin User',
-      role: 'ADMIN',
+      role: Role.ADMIN,
     },
   });
 
-  // Create test user with free subscription
-  const testUserPassword = await bcrypt.hash('user123', 10);
+  // Test User
+  const hashedTest = await bcrypt.hash('user123', 10);
   const testUser = await prisma.user.upsert({
     where: { email: 'user@test.com' },
     update: {},
     create: {
       email: 'user@test.com',
-      password: testUserPassword,
+      password: hashedTest,
       name: 'Test User',
-      role: 'USER',
+      role: Role.USER,
     },
   });
 
-  // Create subscription for test user
+  // Subscription for test user
   const endDate = new Date();
   endDate.setDate(endDate.getDate() + 30);
 
@@ -82,25 +82,25 @@ async function main() {
     create: {
       userId: testUser.id,
       planId: freePlan.id,
-      status: 'ACTIVE',
+      status: SubscriptionStatus.ACTIVE,
       endDate: endDate,
     },
   });
 
-  // Create default settings
-  const defaultSettings = [
-    { key: 'TRACCAR_URL', value: 'http://localhost:8082' },
+  // Default settings
+  const settings = [
+    { key: 'TRACCAR_URL', value: 'https://demo4.traccar.org' },
     { key: 'TRACCAR_USER', value: 'admin' },
     { key: 'TRACCAR_PASS', value: 'admin' },
     { key: 'TELEBIRR_MODE', value: 'sandbox' },
     { key: 'EMAIL_NOTIFICATIONS', value: 'true' },
   ];
 
-  for (const setting of defaultSettings) {
+  for (const s of settings) {
     await prisma.settings.upsert({
-      where: { key: setting.key },
-      update: { value: setting.value },
-      create: setting,
+      where: { key: s.key },
+      update: { value: s.value },
+      create: s,
     });
   }
 

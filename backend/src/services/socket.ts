@@ -1,36 +1,36 @@
-import { Server } from 'socket.io';
+import { Server, Socket } from 'socket.io';
 import WebSocket from 'ws';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
+
 
 const prisma = new PrismaClient();
 
 interface AuthenticatedSocket extends Socket {
   userId?: string;
+  userRole?: string;
 }
 
 /**
  * Socket.IO Service for Real-time Updates
- * 
- * Features:
- * - Real-time device location updates
- * - Subscription status changes
- * - Payment notifications
- * - Admin dashboard updates
  */
 export function initializeSocket(io: Server) {
   console.log('🔌 Initializing Socket.IO service...');
 
   // Authentication middleware
-  io.use(async (socket: any, next) => {
+  io.use(async (socket: AuthenticatedSocket, next) => {
     try {
       const token = socket.handshake.auth.token;
-      
+
       if (!token) {
         return next(new Error('Authentication token required'));
       }
 
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any;
+      if (!process.env.JWT_SECRET) {
+        return next(new Error('JWT_SECRET not configured'));
+      }
+
+      const decoded = jwt.verify(token, process.env.JWT_SECRET) as any;
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
         select: { id: true, email: true, role: true }
@@ -49,12 +49,12 @@ export function initializeSocket(io: Server) {
   });
 
   // Handle client connections
-  io.on('connection', (socket: any) => {
+  io.on('connection', (socket: AuthenticatedSocket) => {
     console.log(`👤 User ${socket.userId} connected`);
 
     // Join user-specific room
     socket.join(`user:${socket.userId}`);
-    
+
     // Join admin room if user is admin
     if (socket.userRole === 'ADMIN') {
       socket.join('admin');
@@ -63,7 +63,6 @@ export function initializeSocket(io: Server) {
     // Handle device tracking subscription
     socket.on('subscribe:devices', async (deviceIds: string[]) => {
       try {
-        // Verify user owns these devices
         const userDevices = await prisma.device.findMany({
           where: {
             userId: socket.userId,
@@ -72,7 +71,6 @@ export function initializeSocket(io: Server) {
           }
         });
 
-        // Join device-specific rooms
         userDevices.forEach(device => {
           socket.join(`device:${device.id}`);
         });
@@ -107,68 +105,83 @@ export function initializeSocket(io: Server) {
     });
   });
 
-  // Start Traccar WebSocket connection for real-time updates
+  // Start Traccar WebSocket connection
   startTraccarWebSocket(io);
 
   return io;
 }
 
 /**
- * Connect to Traccar WebSocket for real-time position updates
+ * Connect to Traccar WebSocket (v5+ requires session login)
  */
-function startTraccarWebSocket(io: Server) {
+async function startTraccarWebSocket(io: Server) {
   const traccarUrl = process.env.TRACCAR_URL || 'http://localhost:8082';
-  const wsUrl = traccarUrl.replace('http', 'ws') + '/api/socket';
-  
+  const wsUrl = traccarUrl.replace(/^http/, 'ws') + '/api/socket';
+
   console.log('🛰️ Connecting to Traccar WebSocket:', wsUrl);
 
-  const ws = new WebSocket(wsUrl, {
-    headers: {
-      'Authorization': 'Basic ' + Buffer.from(
-        `${process.env.TRACCAR_USER}:${process.env.TRACCAR_PASS}`
-      ).toString('base64')
+  try {
+    // Login to Traccar REST API first
+    const res = await fetch(`${traccarUrl}/api/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        email: process.env.TRACCAR_USER || '',
+          password: process.env.TRACCAR_PASS || ''
+      })
+    });
+
+
+    if (!res.ok) {
+      console.error('❌ Failed to authenticate with Traccar:', await res.text());
+      return;
     }
-  });
 
-  ws.on('open', () => {
-    console.log('✅ Connected to Traccar WebSocket');
-  });
-
-  ws.on('message', async (data) => {
-    try {
-      const message = JSON.parse(data.toString());
-      
-      if (message.positions) {
-        // Handle position updates
-        for (const position of message.positions) {
-          await handlePositionUpdate(io, position);
-        }
-      }
-
-      if (message.devices) {
-        // Handle device updates
-        for (const device of message.devices) {
-          await handleDeviceUpdate(io, device);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error processing Traccar message:', error);
+    const cookies = res.headers.get('set-cookie');
+    if (!cookies) {
+      console.error('❌ No session cookie returned from Traccar');
+      return;
     }
-  });
 
-  ws.on('error', (error) => {
-    console.error('❌ Traccar WebSocket error:', error.message);
-    // Don't flood console with full error stack
-  });
+    // Connect with session cookie
+    const ws = new WebSocket(wsUrl, { headers: { Cookie: cookies } });
 
-  ws.on('close', () => {
-    console.log('🔌 Traccar WebSocket connection closed, attempting to reconnect...');
-    
-    // Reconnect after 30 seconds to avoid spam
-    setTimeout(() => {
-      startTraccarWebSocket(io);
-    }, 30000);
-  });
+    ws.on('open', () => {
+      console.log('✅ Connected to Traccar WebSocket');
+    });
+
+    ws.on('message', async (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+
+        if (message.positions) {
+          for (const position of message.positions) {
+            await handlePositionUpdate(io, position);
+          }
+        }
+
+        if (message.devices) {
+          for (const device of message.devices) {
+            await handleDeviceUpdate(io, device);
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error processing Traccar message:', error);
+      }
+    });
+
+    ws.on('error', (error) => {
+      console.error('❌ Traccar WebSocket error:', error.message);
+    });
+
+    ws.on('close', () => {
+      console.log('🔌 Traccar WebSocket connection closed, retrying in 30s...');
+      setTimeout(() => startTraccarWebSocket(io), 30000);
+    });
+  } catch (error) {
+    console.error('❌ Failed to connect to Traccar WebSocket:', error);
+    setTimeout(() => startTraccarWebSocket(io), 30000);
+  }
 }
 
 /**
@@ -176,14 +189,12 @@ function startTraccarWebSocket(io: Server) {
  */
 async function handlePositionUpdate(io: Server, position: any) {
   try {
-    // Find device in our database
     const device = await prisma.device.findUnique({
       where: { traccarId: position.deviceId }
     });
 
     if (!device) return;
 
-    // Update device position in database
     await prisma.device.update({
       where: { id: device.id },
       data: {
@@ -195,7 +206,6 @@ async function handlePositionUpdate(io: Server, position: any) {
       }
     });
 
-    // Emit to device subscribers
     io.to(`device:${device.id}`).emit('position:update', {
       deviceId: device.id,
       position: {
@@ -208,7 +218,6 @@ async function handlePositionUpdate(io: Server, position: any) {
       }
     });
 
-    // Emit to user
     io.to(`user:${device.userId}`).emit('device:position', {
       deviceId: device.id,
       position
@@ -224,26 +233,22 @@ async function handlePositionUpdate(io: Server, position: any) {
  */
 async function handleDeviceUpdate(io: Server, traccarDevice: any) {
   try {
-    // Find device in our database
     const device = await prisma.device.findUnique({
       where: { traccarId: traccarDevice.id }
     });
 
     if (!device) return;
 
-    // Emit device status update
     io.to(`user:${device.userId}`).emit('device:status', {
       deviceId: device.id,
       status: traccarDevice.status,
       lastUpdate: traccarDevice.lastUpdate,
     });
 
-    // Emit to admin dashboard
     io.to('admin:dashboard').emit('device:update', {
       deviceId: device.id,
       traccarDevice,
     });
-
   } catch (error) {
     console.error('❌ Error handling device update:', error);
   }

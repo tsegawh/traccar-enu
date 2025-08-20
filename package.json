@@ -16,5 +16,8 @@
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",
     "vite": "^7.1.2"
+  },
+  "dependencies": {
+    "mysql2": "^3.14.3"
   }
 }
