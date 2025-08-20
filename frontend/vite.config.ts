@@ -10,7 +10,7 @@ export default defineConfig({
     allowedHosts: [
       'localhost',
       '127.0.0.1',
-      '263ab849-b245-4311-a786-7563d1dcfb6a-00-260159f56g1ck.janeway.replit.dev'
+    
     ],
     proxy: {
       '/api': {
