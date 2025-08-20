@@ -4,11 +4,11 @@
   "description": "Backend API for Traccar subscription management",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon --exec tsx src/server.ts",
+    "dev": "nodemon --exec npx tsx src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "db:push": "prisma db push",
-    "db:seed": "tsx src/prisma/seed.ts",
+    "db:seed": "npx tsx src/prisma/seed.ts",
     "db:studio": "prisma studio"
   },
   "dependencies": {
