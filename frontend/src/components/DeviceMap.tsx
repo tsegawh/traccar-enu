@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -46,16 +47,29 @@ interface Device {
 interface DeviceMapProps {
   devices: Device[];
   selectedDevice?: Device | null;
+  routeData?: Array<{
+    latitude: number;
+    longitude: number;
+    speed: number;
+    timestamp: string;
+  }>;
+  showRoute?: boolean;
 }
 
 // Component to handle map bounds and center
-function MapController({ devices, selectedDevice }: DeviceMapProps) {
+function MapController({ devices, selectedDevice, routeData }: DeviceMapProps) {
   const map = useMap();
 
   useEffect(() => {
     if (selectedDevice && selectedDevice.latitude && selectedDevice.longitude) {
       // Center on selected device
       map.setView([selectedDevice.latitude, selectedDevice.longitude], 15);
+    } else if (routeData && routeData.length > 0) {
+      // Fit bounds to show entire route
+      const bounds = L.latLngBounds(
+        routeData.map(point => [point.latitude, point.longitude])
+      );
+      map.fitBounds(bounds, { padding: [20, 20] });
     } else if (devices.length > 0) {
       // Fit bounds to show all devices
       const validDevices = devices.filter(d => d.latitude && d.longitude);
@@ -66,12 +80,12 @@ function MapController({ devices, selectedDevice }: DeviceMapProps) {
         map.fitBounds(bounds, { padding: [20, 20] });
       }
     }
-  }, [map, devices, selectedDevice]);
+  }, [map, devices, selectedDevice, routeData]);
 
   return null;
 }
 
-export default function DeviceMap({ devices, selectedDevice }: DeviceMapProps) {
+export default function DeviceMap({ devices, selectedDevice, routeData, showRoute }: DeviceMapProps) {
   const mapRef = useRef<L.Map>(null);
 
   // Filter devices with valid coordinates
@@ -112,7 +126,17 @@ export default function DeviceMap({ devices, selectedDevice }: DeviceMapProps) {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           
-          <MapController devices={validDevices} selectedDevice={selectedDevice} />
+          <MapController devices={validDevices} selectedDevice={selectedDevice} routeData={routeData} />
+
+          {/* Route polyline */}
+          {showRoute && routeData && routeData.length > 1 && (
+            <Polyline
+              positions={routeData.map(point => [point.latitude, point.longitude])}
+              color="#2563eb"
+              weight={3}
+              opacity={0.8}
+            />
+          )}
 
           {validDevices.map((device) => (
             <Marker
