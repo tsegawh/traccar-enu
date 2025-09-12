@@ -208,6 +208,39 @@ router.delete('/:id', authenticateToken, async (req: AuthRequest, res, next) => 
 router.get('/:id/positions', authenticateToken, async (req: AuthRequest, res, next) => {
   try {
     const { id } = req.params;
+    const { from, to, limit } = req.query;
+
+    // Find device
+    const device = await prisma.device.findFirst({
+      where: { 
+        id,
+        userId: req.user!.id 
+      }
+    });
+
+    if (!device) {
+      throw createError('Device not found', 404);
+    }
+
+    // Get positions from Traccar
+    const positions = await traccarService.getPositions(
+      device.traccarId,
+      from as string,
+      to as string,
+      limit ? parseInt(limit as string) : undefined
+    );
+
+    res.json({ positions });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get device reports
+router.get('/:id/reports', authenticateToken, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params;
     const { from, to } = req.query;
 
     // Find device
@@ -226,14 +259,80 @@ router.get('/:id/positions', authenticateToken, async (req: AuthRequest, res, ne
     const positions = await traccarService.getPositions(
       device.traccarId,
       from as string,
-      to as string
+      to as string,
+      1000 // Limit for performance
     );
 
-    res.json({ positions });
+    // Calculate summary statistics
+    let totalDistance = 0;
+    let maxSpeed = 0;
+    let totalTime = 0;
+    let movingTime = 0;
+
+    if (positions.length > 1) {
+      for (let i = 1; i < positions.length; i++) {
+        const prev = positions[i - 1];
+        const curr = positions[i];
+
+        // Calculate distance between points (Haversine formula)
+        const distance = calculateDistance(
+          prev.latitude, prev.longitude,
+          curr.latitude, curr.longitude
+        );
+        totalDistance += distance;
+
+        // Track max speed
+        if (curr.speed > maxSpeed) {
+          maxSpeed = curr.speed;
+        }
+
+        // Calculate time difference
+        const timeDiff = new Date(curr.fixTime).getTime() - new Date(prev.fixTime).getTime();
+        totalTime += timeDiff;
+
+        // Count as moving time if speed > 5 km/h
+        if (curr.speed > 5) {
+          movingTime += timeDiff;
+        }
+      }
+    }
+
+    const summary = {
+      totalDistance: Math.round(totalDistance * 100) / 100, // km
+      maxSpeed: Math.round(maxSpeed * 100) / 100, // km/h
+      averageSpeed: totalTime > 0 ? Math.round((totalDistance / (totalTime / 3600000)) * 100) / 100 : 0,
+      totalTime: Math.round(totalTime / 60000), // minutes
+      movingTime: Math.round(movingTime / 60000), // minutes
+      stoppedTime: Math.round((totalTime - movingTime) / 60000), // minutes
+      positionCount: positions.length
+    };
+
+    res.json({
+      summary,
+      positions: positions.slice(0, 500), // Limit positions for performance
+      device: {
+        id: device.id,
+        name: device.name,
+        uniqueId: device.uniqueId
+      }
+    });
 
   } catch (error) {
     next(error);
   }
 });
+
+// Helper function to calculate distance between two GPS points
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth's radius in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
 
 export default router;
