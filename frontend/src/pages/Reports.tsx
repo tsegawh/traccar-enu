@@ -29,7 +29,7 @@ export default function Reports() {
 
   const fetchDevices = async () => {
     try {
-      const response = await axios.get('/api/device');
+      const response = await axios.get('/device');
       setDevices(response.data.devices);
     } catch (error) {
       console.error('Error fetching devices:', error);
