@@ -18,6 +18,7 @@ const Login = React.lazy(() => import('./pages/Login'));
 const Register = React.lazy(() => import('./pages/Register'));
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const Devices = React.lazy(() => import('./pages/Devices'));
+const Reports = React.lazy(() => import('./pages/Reports'));
 const PaymentSuccess = React.lazy(() => import('./pages/PaymentSuccess'));
 const PaymentCancel = React.lazy(() => import('./pages/PaymentCancel'));
 
@@ -53,6 +54,7 @@ function App() {
                         <Routes>
                           <Route index element={<Dashboard />} />
                           <Route path="devices" element={<Devices />} />
+                          <Route path="reports" element={<Reports />} />
                         </Routes>
                       </Layout>
                     </ProtectedRoute>
