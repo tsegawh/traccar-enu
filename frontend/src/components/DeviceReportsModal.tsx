@@ -155,6 +155,8 @@ export default function DeviceReportsModal({ device, onClose }: DeviceReportsMod
     timestamp: pos.fixTime
   }));
 
+  console.log('Route data:', routeData); // Debug log
+  console.log('Report data positions:', reportData.positions); // Debug log
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
@@ -373,9 +375,19 @@ export default function DeviceReportsModal({ device, onClose }: DeviceReportsMod
                   </div>
 
                   {routeData.length > 0 ? (
-                    <div className="h-96">
+                    <div className="h-96 w-full">
                       <DeviceMap
-                        devices={[]}
+                        devices={[{
+                          id: device.id,
+                          name: device.name,
+                          uniqueId: device.uniqueId,
+                          latitude: routeData[0]?.latitude || null,
+                          longitude: routeData[0]?.longitude || null,
+                          speed: null,
+                          course: null,
+                          lastUpdate: null,
+                          isOnline: false
+                        }]}
                         routeData={routeData}
                         showRoute={true}
                       />

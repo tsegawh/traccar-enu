@@ -61,15 +61,15 @@ function MapController({ devices, selectedDevice, routeData }: DeviceMapProps) {
   const map = useMap();
 
   useEffect(() => {
-    if (selectedDevice && selectedDevice.latitude && selectedDevice.longitude) {
-      // Center on selected device
-      map.setView([selectedDevice.latitude, selectedDevice.longitude], 15);
-    } else if (routeData && routeData.length > 0) {
+    if (routeData && routeData.length > 0) {
       // Fit bounds to show entire route
       const bounds = L.latLngBounds(
         routeData.map(point => [point.latitude, point.longitude])
       );
       map.fitBounds(bounds, { padding: [20, 20] });
+    } else if (selectedDevice && selectedDevice.latitude && selectedDevice.longitude) {
+      // Center on selected device
+      map.setView([selectedDevice.latitude, selectedDevice.longitude], 15);
     } else if (devices.length > 0) {
       // Fit bounds to show all devices
       const validDevices = devices.filter(d => d.latitude && d.longitude);
@@ -93,12 +93,30 @@ export default function DeviceMap({ devices, selectedDevice, routeData, showRout
     device.latitude !== null && device.longitude !== null
   );
 
+  // Check if we have route data to display
+  const hasRouteData = routeData && routeData.length > 0;
+  const hasValidDevices = validDevices.length > 0;
+
   // Default center (Addis Ababa, Ethiopia)
   const defaultCenter: [number, number] = [9.0320, 38.7469];
 
+  // Determine initial center and zoom based on available data
+  const getInitialView = (): { center: [number, number]; zoom: number } => {
+    if (hasRouteData) {
+      const firstPoint = routeData[0];
+      return { center: [firstPoint.latitude, firstPoint.longitude], zoom: 13 };
+    }
+    if (hasValidDevices) {
+      const firstDevice = validDevices[0];
+      return { center: [firstDevice.latitude!, firstDevice.longitude!], zoom: 13 };
+    }
+    return { center: defaultCenter, zoom: 10 };
+  };
+
+  const initialView = getInitialView();
   return (
     <div className="h-96 w-full relative">
-      {validDevices.length === 0 ? (
+      {!hasValidDevices && !hasRouteData ? (
         <div className="flex items-center justify-center h-full bg-gray-50 rounded-lg">
           <div className="text-center">
             <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -109,15 +127,15 @@ export default function DeviceMap({ devices, selectedDevice, routeData, showRout
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No device locations</h3>
             <p className="text-gray-600">
-              Device locations will appear here once they start reporting GPS data
+              {showRoute ? 'No route data available for the selected period' : 'Device locations will appear here once they start reporting GPS data'}
             </p>
           </div>
         </div>
       ) : (
         <MapContainer
           ref={mapRef}
-          center={defaultCenter}
-          zoom={10}
+          center={initialView.center}
+          zoom={initialView.zoom}
           className="h-full w-full rounded-lg"
           zoomControl={true}
         >
@@ -126,7 +144,7 @@ export default function DeviceMap({ devices, selectedDevice, routeData, showRout
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           
-          <MapController devices={validDevices} selectedDevice={selectedDevice} routeData={routeData} />
+          <MapController devices={devices} selectedDevice={selectedDevice} routeData={routeData} />
 
           {/* Route polyline */}
           {showRoute && routeData && routeData.length > 1 && (
@@ -135,9 +153,62 @@ export default function DeviceMap({ devices, selectedDevice, routeData, showRout
               color="#2563eb"
               weight={3}
               opacity={0.8}
+              dashArray="5, 5"
             />
           )}
 
+          {/* Route start and end markers */}
+          {showRoute && routeData && routeData.length > 0 && (
+            <>
+              {/* Start marker */}
+              <Marker
+                position={[routeData[0].latitude, routeData[0].longitude]}
+                icon={L.divIcon({
+                  className: 'custom-route-marker',
+                  html: `
+                    <div class="w-6 h-6 bg-green-500 border-2 border-white rounded-full shadow-lg flex items-center justify-center">
+                      <span class="text-white text-xs font-bold">S</span>
+                    </div>
+                  `,
+                  iconSize: [24, 24],
+                  iconAnchor: [12, 12],
+                })}
+              >
+                <Popup>
+                  <div className="text-sm">
+                    <strong>Route Start</strong><br/>
+                    Time: {new Date(routeData[0].timestamp).toLocaleString()}<br/>
+                    Speed: {Math.round(routeData[0].speed)} km/h
+                  </div>
+                </Popup>
+              </Marker>
+
+              {/* End marker */}
+              {routeData.length > 1 && (
+                <Marker
+                  position={[routeData[routeData.length - 1].latitude, routeData[routeData.length - 1].longitude]}
+                  icon={L.divIcon({
+                    className: 'custom-route-marker',
+                    html: `
+                      <div class="w-6 h-6 bg-red-500 border-2 border-white rounded-full shadow-lg flex items-center justify-center">
+                        <span class="text-white text-xs font-bold">E</span>
+                      </div>
+                    `,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12],
+                  })}
+                >
+                  <Popup>
+                    <div className="text-sm">
+                      <strong>Route End</strong><br/>
+                      Time: {new Date(routeData[routeData.length - 1].timestamp).toLocaleString()}<br/>
+                      Speed: {Math.round(routeData[routeData.length - 1].speed)} km/h
+                    </div>
+                  </Popup>
+                </Marker>
+              )}
+            </>
+          )}
           {validDevices.map((device) => (
             <Marker
               key={device.id}
@@ -198,16 +269,37 @@ export default function DeviceMap({ devices, selectedDevice, routeData, showRout
 
       {/* Legend */}
       <div className="absolute top-4 right-4 bg-white rounded-lg shadow-lg p-3 z-[1000]">
-        <h4 className="text-sm font-medium text-gray-900 mb-2">Device Status</h4>
+        <h4 className="text-sm font-medium text-gray-900 mb-2">
+          {showRoute ? 'Route Legend' : 'Device Status'}
+        </h4>
         <div className="space-y-2">
-          <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 bg-success-500 rounded-full"></div>
-            <span className="text-xs text-gray-600">Online</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
-            <span className="text-xs text-gray-600">Offline</span>
-          </div>
+          {showRoute ? (
+            <>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <span className="text-xs text-gray-600">Start</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                <span className="text-xs text-gray-600">End</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-1 bg-blue-600"></div>
+                <span className="text-xs text-gray-600">Route</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-success-500 rounded-full"></div>
+                <span className="text-xs text-gray-600">Online</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="w-3 h-3 bg-gray-400 rounded-full"></div>
+                <span className="text-xs text-gray-600">Offline</span>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
