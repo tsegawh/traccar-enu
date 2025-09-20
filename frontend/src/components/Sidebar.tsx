@@ -16,6 +16,7 @@ const userNavItems = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Devices', href: '/devices', icon: MapPin },
   { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+  { name: 'Account', href: '/dashboard/account', icon: Settings },
 ];
 
 const adminNavItems = [

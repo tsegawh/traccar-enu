@@ -16,9 +16,12 @@ import LoadingSpinner from './components/LoadingSpinner';
 const Home = React.lazy(() => import('./pages/Home'));
 const Login = React.lazy(() => import('./pages/Login'));
 const Register = React.lazy(() => import('./pages/Register'));
+const ForgotPassword = React.lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword = React.lazy(() => import('./pages/ResetPassword'));
 const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const Devices = React.lazy(() => import('./pages/Devices'));
 const Reports = React.lazy(() => import('./pages/Reports'));
+const Account = React.lazy(() => import('./pages/Account'));
 const PaymentSuccess = React.lazy(() => import('./pages/PaymentSuccess'));
 const PaymentCancel = React.lazy(() => import('./pages/PaymentCancel'));
 
@@ -42,6 +45,8 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/payment/success" element={<PaymentSuccess />} />
                 <Route path="/payment/cancel" element={<PaymentCancel />} />
 
@@ -55,6 +60,7 @@ function App() {
                           <Route index element={<Dashboard />} />
                           <Route path="devices" element={<Devices />} />
                           <Route path="reports" element={<Reports />} />
+                          <Route path="account" element={<Account />} />
                         </Routes>
                       </Layout>
                     </ProtectedRoute>
