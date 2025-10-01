@@ -181,13 +181,17 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res, next) => {
 // Get user order reports
 router.get('/orders', authenticateToken, async (req: AuthRequest, res, next) => {
   try {
-    const { page = 1, limit = 20, status, from, to } = req.query;
+    const { page = 1, limit = 20, status, search, from, to } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
     const where: any = { userId: req.user!.id };
 
     if (status && status !== 'ALL') {
       where.status = status;
+    }
+
+    if (search) {
+      where.orderId = { contains: search as string };
     }
 
     if (from || to) {
@@ -199,11 +203,6 @@ router.get('/orders', authenticateToken, async (req: AuthRequest, res, next) => 
     const [orders, total] = await Promise.all([
       prisma.payment.findMany({
         where,
-        include: {
-          user: {
-            select: { id: true, name: true, email: true }
-          }
-        },
         skip,
         take: Number(limit),
         orderBy: { createdAt: 'desc' }

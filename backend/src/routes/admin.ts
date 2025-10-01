@@ -262,6 +262,85 @@ router.get('/payments', async (req, res, next) => {
   }
 });
 
+// Get order reports with advanced filtering
+router.get('/orders', async (req, res, next) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 50, 
+      status, 
+      userId, 
+      from, 
+      to,
+      search 
+    } = req.query;
+    
+    const skip = (Number(page) - 1) * Number(limit);
+    const where: any = {};
+
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+
+    if (userId) {
+      where.userId = userId;
+    }
+
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from as string);
+      if (to) where.createdAt.lte = new Date(to as string);
+    }
+
+    if (search) {
+      where.OR = [
+        { orderId: { contains: search as string } },
+        { user: { name: { contains: search as string } } },
+        { user: { email: { contains: search as string } } }
+      ];
+    }
+
+    const [orders, total] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        include: {
+          user: {
+            select: { id: true, name: true, email: true }
+          }
+        },
+        skip,
+        take: Number(limit),
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.payment.count({ where })
+    ]);
+
+    // Calculate summary statistics
+    const [totalRevenue, completedOrders, failedOrders, pendingOrders] = await Promise.all([
+      prisma.payment.aggregate({
+        where: { status: 'COMPLETED' },
+        _sum: { amount: true }
+      }),
+      prisma.payment.count({ where: { status: 'COMPLETED' } }),
+      prisma.payment.count({ where: { status: 'FAILED' } }),
+      averageOrderValue: totalStats._count._all > 0 ? (totalStats._sum.amount || 0) / totalStats._count._all : 0
+    };
+
+    res.json({ 
+      orders,
+      summary,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Send reminder emails for expiring subscriptions
 router.post('/send-reminders', async (req, res, next) => {
   try {

@@ -16,6 +16,7 @@ const userNavItems = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Devices', href: '/devices', icon: MapPin },
   { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+  { name: 'Orders', href: '/dashboard/orders', icon: CreditCard },
   { name: 'Account', href: '/dashboard/account', icon: Settings },
 ];
 
@@ -24,7 +25,7 @@ const adminNavItems = [
   { name: 'Users', href: '/admin/users', icon: Users },
   { name: 'Subscriptions', href: '/admin/subscriptions', icon: CreditCard },
   { name: 'Devices', href: '/admin/devices', icon: Smartphone },
-  { name: 'Payments', href: '/admin/payments', icon: Database },
+  { name: 'Orders', href: '/admin/orders', icon: Database },
   { name: 'Settings', href: '/admin/settings', icon: Settings },
 ];
 

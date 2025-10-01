@@ -22,6 +22,7 @@ const Dashboard = React.lazy(() => import('./pages/Dashboard'));
 const Devices = React.lazy(() => import('./pages/Devices'));
 const Reports = React.lazy(() => import('./pages/Reports'));
 const Account = React.lazy(() => import('./pages/Account'));
+const OrderReports = React.lazy(() => import('./pages/OrderReports'));
 const PaymentSuccess = React.lazy(() => import('./pages/PaymentSuccess'));
 const PaymentCancel = React.lazy(() => import('./pages/PaymentCancel'));
 
@@ -30,7 +31,7 @@ const AdminDashboard = React.lazy(() => import('./pages/admin/AdminDashboard'));
 const AdminUsers = React.lazy(() => import('./pages/admin/AdminUsers'));
 const AdminSubscriptions = React.lazy(() => import('./pages/admin/AdminSubscriptions'));
 const AdminDevices = React.lazy(() => import('./pages/admin/AdminDevices'));
-const AdminPayments = React.lazy(() => import('./pages/admin/AdminPayments'));
+const AdminOrderReports = React.lazy(() => import('./pages/admin/AdminOrderReports'));
 const AdminSettings = React.lazy(() => import('./pages/admin/AdminSettings'));
 
 function App() {
@@ -60,6 +61,7 @@ function App() {
                           <Route index element={<Dashboard />} />
                           <Route path="devices" element={<Devices />} />
                           <Route path="reports" element={<Reports />} />
+                          <Route path="orders" element={<OrderReports />} />
                           <Route path="account" element={<Account />} />
                         </Routes>
                       </Layout>
@@ -78,7 +80,7 @@ function App() {
                           <Route path="users" element={<AdminUsers />} />
                           <Route path="subscriptions" element={<AdminSubscriptions />} />
                           <Route path="devices" element={<AdminDevices />} />
-                          <Route path="payments" element={<AdminPayments />} />
+                          <Route path="orders" element={<AdminOrderReports />} />
                           <Route path="settings" element={<AdminSettings />} />
                         </Routes>
                       </Layout>
