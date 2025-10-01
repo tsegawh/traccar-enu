@@ -181,7 +181,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res, next) => {
 // Get user order reports
 router.get('/orders', authenticateToken, async (req: AuthRequest, res, next) => {
   try {
-    const { page = 1, limit = 20, status, search, from, to } = req.query;
+    const { page = 1, limit = 20, status, orderType, search, from, to } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
     const where: any = { userId: req.user!.id };
@@ -190,8 +190,15 @@ router.get('/orders', authenticateToken, async (req: AuthRequest, res, next) => 
       where.status = status;
     }
 
+    if (orderType && orderType !== 'ALL') {
+      where.orderType = orderType;
+    }
     if (search) {
-      where.orderId = { contains: search as string };
+      where.OR = [
+        { orderId: { contains: search as string } },
+        { invoiceNumber: { contains: search as string } },
+        { description: { contains: search as string } }
+      ];
     }
 
     if (from || to) {

@@ -269,6 +269,7 @@ router.get('/orders', async (req, res, next) => {
       page = 1, 
       limit = 50, 
       status, 
+      orderType,
       userId, 
       from, 
       to,
@@ -282,6 +283,9 @@ router.get('/orders', async (req, res, next) => {
       where.status = status;
     }
 
+    if (orderType && orderType !== 'ALL') {
+      where.orderType = orderType;
+    }
     if (userId) {
       where.userId = userId;
     }
@@ -295,6 +299,8 @@ router.get('/orders', async (req, res, next) => {
     if (search) {
       where.OR = [
         { orderId: { contains: search as string } },
+        { invoiceNumber: { contains: search as string } },
+        { description: { contains: search as string } },
         { user: { name: { contains: search as string } } },
         { user: { email: { contains: search as string } } }
       ];
@@ -323,6 +329,19 @@ router.get('/orders', async (req, res, next) => {
       }),
       prisma.payment.count({ where: { status: 'COMPLETED' } }),
       prisma.payment.count({ where: { status: 'FAILED' } }),
+      prisma.payment.count({ where: { status: 'PENDING' } })
+    ]);
+
+    const totalStats = await prisma.payment.aggregate({
+      _sum: { amount: true },
+      _count: { _all: true }
+    });
+
+    const summary = {
+      totalRevenue: totalRevenue._sum.amount || 0,
+      completedOrders,
+      failedOrders,
+      pendingOrders,
       averageOrderValue: totalStats._count._all > 0 ? (totalStats._sum.amount || 0) / totalStats._count._all : 0
     };
 

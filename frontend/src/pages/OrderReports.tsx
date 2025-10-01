@@ -1,17 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  ShoppingCart, 
-  Calendar, 
-  DollarSign, 
-  CheckCircle, 
-  XCircle, 
-  Clock,
-  Download,
-  Filter,
-  Search,
-  Eye
-} from 'lucide-react';
+import { ShoppingCart, Calendar, DollarSign, CircleCheck as CheckCircle, Circle as XCircle, Clock, Download, ListFilter as Filter, Search, Eye } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -20,10 +9,15 @@ import LoadingSpinner from '../components/LoadingSpinner';
 interface Order {
   id: string;
   orderId: string;
+  invoiceNumber?: string;
+  orderType: 'SUBSCRIPTION' | 'DEVICE_PURCHASE' | 'SERVICE_FEE' | 'ADDON' | 'REFUND';
+  subType?: string;
+  description?: string;
   amount: number;
   currency: string;
   status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
   paymentMethod?: string;
+  metadata?: any;
   createdAt: string;
   updatedAt: string;
 }
@@ -56,6 +50,7 @@ export default function OrderReports() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     status: 'ALL',
+    orderType: 'ALL',
     dateRange: '30',
     search: '',
     from: '',
@@ -79,6 +74,9 @@ export default function OrderReports() {
         params.status = filters.status;
       }
 
+      if (filters.orderType !== 'ALL') {
+        params.orderType = filters.orderType;
+      }
       if (filters.from) params.from = filters.from;
       if (filters.to) params.to = filters.to;
 
@@ -134,9 +132,13 @@ export default function OrderReports() {
 
   const exportOrders = () => {
     const csvContent = [
-      ['Order ID', 'Amount', 'Status', 'Payment Method', 'Date'].join(','),
+      ['Order ID', 'Invoice Number', 'Type', 'Sub Type', 'Description', 'Amount', 'Status', 'Payment Method', 'Date'].join(','),
       ...orders.map(order => [
         order.orderId,
+        order.invoiceNumber || 'N/A',
+        order.orderType,
+        order.subType || 'N/A',
+        order.description || 'N/A',
         order.amount,
         order.status,
         order.paymentMethod || 'N/A',
@@ -279,6 +281,22 @@ export default function OrderReports() {
             ))}
           </div>
 
+          <div className="flex space-x-2">
+            <label className="text-sm font-medium text-gray-700">Type:</label>
+            {['ALL', 'SUBSCRIPTION', 'DEVICE_PURCHASE', 'SERVICE_FEE', 'ADDON', 'REFUND'].map((type) => (
+              <button
+                key={type}
+                onClick={() => setFilters(prev => ({ ...prev, orderType: type }))}
+                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
+                  filters.orderType === type
+                    ? 'bg-primary-100 text-primary-700'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+              >
+                {type.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
           <div className="flex items-center space-x-2">
             <label className="text-sm font-medium text-gray-700">Date Range:</label>
             <input
@@ -306,6 +324,9 @@ export default function OrderReports() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Order
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Type
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Amount
@@ -336,10 +357,25 @@ export default function OrderReports() {
                         <div className="text-sm font-medium text-gray-900">
                           {order.orderId}
                         </div>
+                        {order.invoiceNumber && (
+                          <div className="text-sm text-gray-500">
+                            Invoice: {order.invoiceNumber}
+                          </div>
+                        )}
                         <div className="text-sm text-gray-500">
-                          ID: {order.id.slice(0, 8)}...
+                          {order.description || `ID: ${order.id.slice(0, 8)}...`}
                         </div>
                       </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div>
+                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                        {order.orderType.replace('_', ' ')}
+                      </span>
+                      {order.subType && (
+                        <div className="text-xs text-gray-500 mt-1">{order.subType}</div>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
@@ -422,6 +458,28 @@ export default function OrderReports() {
                 <span className="text-gray-600">Order ID:</span>
                 <span className="font-medium">{selectedOrder.orderId}</span>
               </div>
+              {selectedOrder.invoiceNumber && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Invoice Number:</span>
+                  <span className="font-medium">{selectedOrder.invoiceNumber}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-gray-600">Order Type:</span>
+                <span className="font-medium">{selectedOrder.orderType.replace('_', ' ')}</span>
+              </div>
+              {selectedOrder.subType && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Sub Type:</span>
+                  <span className="font-medium">{selectedOrder.subType}</span>
+                </div>
+              )}
+              {selectedOrder.description && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Description:</span>
+                  <span className="font-medium">{selectedOrder.description}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-gray-600">Amount:</span>
                 <span className="font-medium">{formatCurrency(selectedOrder.amount, selectedOrder.currency)}</span>

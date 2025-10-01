@@ -7,6 +7,7 @@ import {
   verifyTelebirrCallback,
   TelebirrPaymentRequest 
 } from '../services/payment';
+import { InvoiceGenerator } from '../services/invoiceGenerator';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -25,7 +26,7 @@ const prisma = new PrismaClient();
 // Initiate payment
 router.post('/pay', authenticateToken, async (req: AuthRequest, res, next) => {
   try {
-    const { planId } = req.body;
+    const { planId, orderType = 'SUBSCRIPTION', subType, metadata } = req.body;
     const userId = req.user!.id;
 
     if (!planId) {
@@ -47,13 +48,24 @@ router.post('/pay', authenticateToken, async (req: AuthRequest, res, next) => {
 
     // Generate unique order ID
     const orderId = `ORDER_${Date.now()}_${userId.slice(-6)}`;
+    const invoiceNumber = await InvoiceGenerator.generateInvoiceNumber();
+    const description = InvoiceGenerator.generateOrderDescription(
+      orderType, 
+      subType, 
+      { ...metadata, planName: plan.name }
+    );
 
     // Create payment record
     const payment = await prisma.payment.create({
       data: {
         userId,
         orderId,
+        invoiceNumber,
+        orderType,
+        subType,
         amount: plan.price,
+        description,
+        metadata: metadata ? JSON.stringify(metadata) : null,
         status: 'PENDING',
       }
     });
@@ -80,6 +92,7 @@ router.post('/pay', authenticateToken, async (req: AuthRequest, res, next) => {
     res.json({
       success: true,
       orderId,
+      invoiceNumber,
       checkoutUrl: telebirrResponse.checkout_url,
       prepayId: telebirrResponse.prepay_id,
     });

@@ -90,18 +90,25 @@ model Payment {
   id            String        @id @default(cuid())
   userId        String
   orderId       String        @unique
+  invoiceNumber String?       @unique
+  orderType     OrderType     @default(SUBSCRIPTION)
+  subType       String?
   amount        Float
   currency      String        @default("ETB")
   status        PaymentStatus @default(PENDING)
   telebirrTxId  String?
   prepayId      String?
   paymentMethod String?
+  description   String?
+  metadata      Json?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([invoiceNumber], map: "payments_invoiceNumber_idx")
+  @@index([orderType], map: "payments_orderType_idx")
   @@map("payments")
 }
 
@@ -125,6 +132,13 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
+enum OrderType {
+  SUBSCRIPTION
+  DEVICE_PURCHASE
+  SERVICE_FEE
+  ADDON
+  REFUND
+}
 enum PaymentStatus {
   PENDING
   COMPLETED
