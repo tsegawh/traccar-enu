@@ -178,6 +178,110 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res, next) => {
   }
 });
 
+// Get user order reports
+router.get('/orders', authenticateToken, async (req: AuthRequest, res, next) => {
+  try {
+    const { page = 1, limit = 20, status, from, to } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const where: any = { userId: req.user!.id };
+
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+
+    if (from || to) {
+      where.createdAt = {};
+      if (from) where.createdAt.gte = new Date(from as string);
+      if (to) where.createdAt.lte = new Date(to as string);
+    }
+
+    const [orders, total] = await Promise.all([
+      prisma.payment.findMany({
+        where,
+        include: {
+          user: {
+            select: { id: true, name: true, email: true }
+          }
+        },
+        skip,
+        take: Number(limit),
+        orderBy: { createdAt: 'desc' }
+      }),
+      prisma.payment.count({ where })
+    ]);
+
+    // Calculate summary statistics
+    const summary = await prisma.payment.aggregate({
+      where: { userId: req.user!.id },
+      _sum: { amount: true },
+      _count: {
+        _all: true
+      }
+    });
+
+    const completedOrders = await prisma.payment.count({
+      where: { 
+        userId: req.user!.id,
+        status: 'COMPLETED' 
+      }
+    });
+
+    const failedOrders = await prisma.payment.count({
+      where: { 
+        userId: req.user!.id,
+        status: 'FAILED' 
+      }
+    });
+
+    res.json({ 
+      orders,
+      summary: {
+        totalOrders: summary._count._all || 0,
+        totalAmount: summary._sum.amount || 0,
+        completedOrders,
+        failedOrders,
+        successRate: summary._count._all > 0 ? Math.round((completedOrders / summary._count._all) * 100) : 0
+      },
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        pages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get order details
+router.get('/orders/:orderId', authenticateToken, async (req: AuthRequest, res, next) => {
+  try {
+    const { orderId } = req.params;
+
+    const order = await prisma.payment.findFirst({
+      where: { 
+        orderId,
+        userId: req.user!.id 
+      },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true }
+        }
+      }
+    });
+
+    if (!order) {
+      throw createError('Order not found', 404);
+    }
+
+    res.json({ order });
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Delete user account
 router.delete('/account', authenticateToken, async (req: AuthRequest, res, next) => {
   try {
