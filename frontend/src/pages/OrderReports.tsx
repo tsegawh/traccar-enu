@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShoppingCart, Calendar, DollarSign, CheckCircle, XCircle, Clock, Download, Filter, FileText } from 'lucide-react';
+import { ShoppingCart, Calendar, DollarSign, CircleCheck as CheckCircle, Circle as XCircle, Clock, Download, ListFilter as Filter, FileText } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
