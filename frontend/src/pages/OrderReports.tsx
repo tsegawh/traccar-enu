@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { ShoppingCart, Calendar, DollarSign, CircleCheck as CheckCircle, Circle as XCircle, Clock, Download, ListFilter as Filter, Search, Eye } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ShoppingCart, Calendar, DollarSign, CheckCircle, XCircle, Clock, Download, Filter, FileText } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -10,14 +9,11 @@ interface Order {
   id: string;
   orderId: string;
   invoiceNumber?: string;
-  orderType: 'SUBSCRIPTION' | 'DEVICE_PURCHASE' | 'SERVICE_FEE' | 'ADDON' | 'REFUND';
-  subType?: string;
-  description?: string;
+  subscriptionPlan?: string;
   amount: number;
   currency: string;
   status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
   paymentMethod?: string;
-  metadata?: any;
   createdAt: string;
   updatedAt: string;
 }
@@ -38,7 +34,6 @@ interface Pagination {
 }
 
 export default function OrderReports() {
-  const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [summary, setSummary] = useState<OrderSummary | null>(null);
   const [pagination, setPagination] = useState<Pagination>({
@@ -50,13 +45,9 @@ export default function OrderReports() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     status: 'ALL',
-    orderType: 'ALL',
-    dateRange: '30',
-    search: '',
     from: '',
     to: ''
   });
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
 
   useEffect(() => {
     fetchOrders();
@@ -72,10 +63,6 @@ export default function OrderReports() {
 
       if (filters.status !== 'ALL') {
         params.status = filters.status;
-      }
-
-      if (filters.orderType !== 'ALL') {
-        params.orderType = filters.orderType;
       }
       if (filters.from) params.from = filters.from;
       if (filters.to) params.to = filters.to;
@@ -132,13 +119,11 @@ export default function OrderReports() {
 
   const exportOrders = () => {
     const csvContent = [
-      ['Order ID', 'Invoice Number', 'Type', 'Sub Type', 'Description', 'Amount', 'Status', 'Payment Method', 'Date'].join(','),
+      ['Order ID', 'Invoice Number', 'Subscription Plan', 'Amount', 'Status', 'Payment Method', 'Date'].join(','),
       ...orders.map(order => [
         order.orderId,
         order.invoiceNumber || 'N/A',
-        order.orderType,
-        order.subType || 'N/A',
-        order.description || 'N/A',
+        order.subscriptionPlan || 'N/A',
         order.amount,
         order.status,
         order.paymentMethod || 'N/A',
@@ -155,8 +140,31 @@ export default function OrderReports() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
+
     toast.success('Orders exported successfully');
+  };
+
+  const downloadInvoice = async (orderId: string) => {
+    try {
+      const response = await axios.get(`/user/orders/${orderId}/invoice`, {
+        responseType: 'blob'
+      });
+
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `invoice_${orderId}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast.success('Invoice downloaded successfully');
+    } catch (error) {
+      console.error('Error downloading invoice:', error);
+      toast.error('Failed to download invoice');
+    }
   };
 
   const handlePageChange = (newPage: number) => {
@@ -281,22 +289,6 @@ export default function OrderReports() {
             ))}
           </div>
 
-          <div className="flex space-x-2">
-            <label className="text-sm font-medium text-gray-700">Type:</label>
-            {['ALL', 'SUBSCRIPTION', 'DEVICE_PURCHASE', 'SERVICE_FEE', 'ADDON', 'REFUND'].map((type) => (
-              <button
-                key={type}
-                onClick={() => setFilters(prev => ({ ...prev, orderType: type }))}
-                className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                  filters.orderType === type
-                    ? 'bg-primary-100 text-primary-700'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {type.replace('_', ' ')}
-              </button>
-            ))}
-          </div>
           <div className="flex items-center space-x-2">
             <label className="text-sm font-medium text-gray-700">Date Range:</label>
             <input
@@ -326,7 +318,7 @@ export default function OrderReports() {
                   Order
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Type
+                  Subscription Plan
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Amount
@@ -362,21 +354,13 @@ export default function OrderReports() {
                             Invoice: {order.invoiceNumber}
                           </div>
                         )}
-                        <div className="text-sm text-gray-500">
-                          {order.description || `ID: ${order.id.slice(0, 8)}...`}
-                        </div>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                        {order.orderType.replace('_', ' ')}
-                      </span>
-                      {order.subType && (
-                        <div className="text-xs text-gray-500 mt-1">{order.subType}</div>
-                      )}
-                    </div>
+                    <span className="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                      {order.subscriptionPlan || 'N/A'}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                     {formatCurrency(order.amount, order.currency)}
@@ -396,13 +380,15 @@ export default function OrderReports() {
                     {format(new Date(order.createdAt), 'MMM dd, yyyy HH:mm')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <button
-                      onClick={() => setSelectedOrder(order)}
-                      className="text-primary-600 hover:text-primary-900 flex items-center space-x-1"
-                    >
-                      <Eye className="w-4 h-4" />
-                      <span>View</span>
-                    </button>
+                    {order.invoiceNumber && order.status === 'COMPLETED' && (
+                      <button
+                        onClick={() => downloadInvoice(order.id)}
+                        className="text-primary-600 hover:text-primary-900 flex items-center space-x-1"
+                      >
+                        <FileText className="w-4 h-4" />
+                        <span>Invoice</span>
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -439,74 +425,6 @@ export default function OrderReports() {
         )}
       </div>
 
-      {/* Order Details Modal */}
-      {selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900">Order Details</h2>
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                ×
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-4">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Order ID:</span>
-                <span className="font-medium">{selectedOrder.orderId}</span>
-              </div>
-              {selectedOrder.invoiceNumber && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Invoice Number:</span>
-                  <span className="font-medium">{selectedOrder.invoiceNumber}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-gray-600">Order Type:</span>
-                <span className="font-medium">{selectedOrder.orderType.replace('_', ' ')}</span>
-              </div>
-              {selectedOrder.subType && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Sub Type:</span>
-                  <span className="font-medium">{selectedOrder.subType}</span>
-                </div>
-              )}
-              {selectedOrder.description && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Description:</span>
-                  <span className="font-medium">{selectedOrder.description}</span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-gray-600">Amount:</span>
-                <span className="font-medium">{formatCurrency(selectedOrder.amount, selectedOrder.currency)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Status:</span>
-                <span className={`inline-flex items-center space-x-1 px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(selectedOrder.status)}`}>
-                  {getStatusIcon(selectedOrder.status)}
-                  <span>{selectedOrder.status}</span>
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Payment Method:</span>
-                <span className="font-medium">{selectedOrder.paymentMethod || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Created:</span>
-                <span className="font-medium">{format(new Date(selectedOrder.createdAt), 'MMM dd, yyyy HH:mm')}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">Updated:</span>
-                <span className="font-medium">{format(new Date(selectedOrder.updatedAt), 'MMM dd, yyyy HH:mm')}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
