@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth';
 import { createError } from '../middleware/errorHandler';
 import { TraccarService } from '../services/traccar';
+import { InvoiceGenerator } from '../services/invoiceGenerator';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -321,6 +322,24 @@ router.get('/orders', async (req, res, next) => {
       prisma.payment.count({ where })
     ]);
 
+    const ordersWithPlanNames = orders.map(order => {
+      let subscriptionPlan = null;
+      if (order.metadata) {
+        try {
+          const metadata = typeof order.metadata === 'string'
+            ? JSON.parse(order.metadata)
+            : order.metadata;
+          subscriptionPlan = metadata.planName || null;
+        } catch (e) {
+          subscriptionPlan = null;
+        }
+      }
+      return {
+        ...order,
+        subscriptionPlan
+      };
+    });
+
     // Calculate summary statistics
     const [totalRevenue, completedOrders, failedOrders, pendingOrders] = await Promise.all([
       prisma.payment.aggregate({
@@ -338,15 +357,17 @@ router.get('/orders', async (req, res, next) => {
     });
 
     const summary = {
+      totalOrders: totalStats._count._all || 0,
       totalRevenue: totalRevenue._sum.amount || 0,
       completedOrders,
       failedOrders,
       pendingOrders,
+      successRate: totalStats._count._all > 0 ? Math.round((completedOrders / totalStats._count._all) * 100) : 0,
       averageOrderValue: totalStats._count._all > 0 ? (totalStats._sum.amount || 0) / totalStats._count._all : 0
     };
 
-    res.json({ 
-      orders,
+    res.json({
+      orders: ordersWithPlanNames,
       summary,
       pagination: {
         page: Number(page),
@@ -381,11 +402,45 @@ router.post('/send-reminders', async (req, res, next) => {
     // TODO: Implement email sending logic here
     // For now, just return the count
     
-    res.json({ 
+    res.json({
       success: true,
       message: `Reminder emails sent to ${expiringSubscriptions.length} users`,
       count: expiringSubscriptions.length
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Download invoice (Admin)
+router.get('/orders/:id/invoice', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const order = await prisma.payment.findFirst({
+      where: { id },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true }
+        }
+      }
+    });
+
+    if (!order) {
+      throw createError('Order not found', 404);
+    }
+
+    if (!order.invoiceNumber) {
+      throw createError('Invoice not available for this order', 400);
+    }
+
+    if (order.status !== 'COMPLETED') {
+      throw createError('Invoice only available for completed orders', 400);
+    }
+
+    const invoiceData = InvoiceGenerator.createInvoiceData(order, order.user);
+
+    res.json(invoiceData);
   } catch (error) {
     next(error);
   }

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { createError } from '../middleware/errorHandler';
+import { InvoiceGenerator } from '../services/invoiceGenerator';
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -217,6 +218,24 @@ router.get('/orders', authenticateToken, async (req: AuthRequest, res, next) => 
       prisma.payment.count({ where })
     ]);
 
+    const ordersWithPlanNames = orders.map(order => {
+      let subscriptionPlan = null;
+      if (order.metadata) {
+        try {
+          const metadata = typeof order.metadata === 'string'
+            ? JSON.parse(order.metadata)
+            : order.metadata;
+          subscriptionPlan = metadata.planName || null;
+        } catch (e) {
+          subscriptionPlan = null;
+        }
+      }
+      return {
+        ...order,
+        subscriptionPlan
+      };
+    });
+
     // Calculate summary statistics
     const summary = await prisma.payment.aggregate({
       where: { userId: req.user!.id },
@@ -240,8 +259,8 @@ router.get('/orders', authenticateToken, async (req: AuthRequest, res, next) => 
       }
     });
 
-    res.json({ 
-      orders,
+    res.json({
+      orders: ordersWithPlanNames,
       summary: {
         totalOrders: summary._count._all || 0,
         totalAmount: summary._sum.amount || 0,
@@ -261,15 +280,52 @@ router.get('/orders', authenticateToken, async (req: AuthRequest, res, next) => 
   }
 });
 
+// Download invoice
+router.get('/orders/:id/invoice', authenticateToken, async (req: AuthRequest, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const order = await prisma.payment.findFirst({
+      where: {
+        id,
+        userId: req.user!.id
+      },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true }
+        }
+      }
+    });
+
+    if (!order) {
+      throw createError('Order not found', 404);
+    }
+
+    if (!order.invoiceNumber) {
+      throw createError('Invoice not available for this order', 400);
+    }
+
+    if (order.status !== 'COMPLETED') {
+      throw createError('Invoice only available for completed orders', 400);
+    }
+
+    const invoiceData = InvoiceGenerator.createInvoiceData(order, order.user);
+
+    res.json(invoiceData);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // Get order details
 router.get('/orders/:orderId', authenticateToken, async (req: AuthRequest, res, next) => {
   try {
     const { orderId } = req.params;
 
     const order = await prisma.payment.findFirst({
-      where: { 
+      where: {
         orderId,
-        userId: req.user!.id 
+        userId: req.user!.id
       },
       include: {
         user: {
