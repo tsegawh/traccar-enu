@@ -2,11 +2,18 @@ import express from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { createError } from '../middleware/errorHandler';
-import { 
-  createTelebirrPayment, 
+import {
+  createTelebirrPayment,
   verifyTelebirrCallback,
-  TelebirrPaymentRequest 
+  TelebirrPaymentRequest
 } from '../services/payment';
+import {
+  createStripeEmbeddedCheckout,
+  createStripeCheckout,
+  verifyStripeWebhook,
+  StripeEmbeddedCheckoutRequest,
+  StripeCheckoutRequest
+} from '../services/stripePayment';
 import { InvoiceGenerator } from '../services/invoiceGenerator';
 
 const router = express.Router();
@@ -26,14 +33,25 @@ const prisma = new PrismaClient();
 // Initiate payment
 router.post('/pay', authenticateToken, async (req: AuthRequest, res, next) => {
   try {
-    const { planId, orderType = 'SUBSCRIPTION', subType, metadata } = req.body;
+    const { planId, orderType = 'SUBSCRIPTION', subType, metadata, paymentGateway = 'stripe', useEmbedded = true } = req.body;
     const userId = req.user!.id;
 
     if (!planId) {
       throw createError('Plan ID is required', 400);
     }
 
-    // Get subscription plan
+    if (!['stripe', 'telebirr'].includes(paymentGateway)) {
+      throw createError('Invalid payment gateway. Must be "stripe" or "telebirr"', 400);
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      throw createError('User not found', 404);
+    }
+
     const plan = await prisma.subscriptionPlan.findUnique({
       where: { id: planId }
     });
@@ -46,16 +64,14 @@ router.post('/pay', authenticateToken, async (req: AuthRequest, res, next) => {
       throw createError('Cannot process payment for free plan', 400);
     }
 
-    // Generate unique order ID
     const orderId = `ORDER_${Date.now()}_${userId.slice(-6)}`;
     const invoiceNumber = await InvoiceGenerator.generateInvoiceNumber();
     const description = InvoiceGenerator.generateOrderDescription(
-      orderType, 
-      subType, 
+      orderType,
+      subType,
       { ...metadata, planName: plan.name }
     );
 
-    // Create payment record
     const payment = await prisma.payment.create({
       data: {
         userId,
@@ -65,45 +81,207 @@ router.post('/pay', authenticateToken, async (req: AuthRequest, res, next) => {
         subType,
         amount: plan.price,
         description,
-        metadata: metadata ? JSON.stringify(metadata) : null,
+        paymentMethod: paymentGateway.toUpperCase(),
+        metadata: JSON.stringify({ ...metadata, planName: plan.name, planId }),
         status: 'PENDING',
       }
     });
 
-    // Prepare Telebirr payment request
-    const paymentRequest: TelebirrPaymentRequest = {
-      orderId,
-      amount: plan.price,
-      userId,
-      planId,
-      returnUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/success`,
-      cancelUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/cancel`,
-    };
+    const returnUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/success?orderId=${orderId}`;
+    const cancelUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/cancel?orderId=${orderId}`;
 
-    // Call Telebirr API
-    const telebirrResponse = await createTelebirrPayment(paymentRequest);
+    if (paymentGateway === 'stripe') {
+      if (useEmbedded) {
+        const stripeRequest: StripeEmbeddedCheckoutRequest = {
+          orderId,
+          amount: plan.price,
+          currency: 'USD',
+          planName: plan.name,
+          userEmail: user.email,
+          userId,
+          planId,
+          returnUrl,
+        };
 
-    // Update payment with prepay_id
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: { prepayId: telebirrResponse.prepay_id }
-    });
+        const stripeResponse = await createStripeEmbeddedCheckout(stripeRequest);
 
-    res.json({
-      success: true,
-      orderId,
-      invoiceNumber,
-      checkoutUrl: telebirrResponse.checkout_url,
-      prepayId: telebirrResponse.prepay_id,
-    });
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { prepayId: stripeResponse.sessionId }
+        });
+
+        res.json({
+          success: true,
+          gateway: 'stripe',
+          embedded: true,
+          orderId,
+          invoiceNumber,
+          clientSecret: stripeResponse.clientSecret,
+          sessionId: stripeResponse.sessionId,
+        });
+      } else {
+        const stripeRequest: StripeCheckoutRequest = {
+          orderId,
+          amount: plan.price,
+          currency: 'USD',
+          planName: plan.name,
+          userEmail: user.email,
+          userId,
+          planId,
+          successUrl: returnUrl,
+          cancelUrl,
+        };
+
+        const stripeResponse = await createStripeCheckout(stripeRequest);
+
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { prepayId: stripeResponse.sessionId }
+        });
+
+        res.json({
+          success: true,
+          gateway: 'stripe',
+          embedded: false,
+          orderId,
+          invoiceNumber,
+          checkoutUrl: stripeResponse.checkoutUrl,
+          sessionId: stripeResponse.sessionId,
+        });
+      }
+    } else {
+      const telebirrRequest: TelebirrPaymentRequest = {
+        orderId,
+        amount: plan.price,
+        userId,
+        planId,
+        returnUrl,
+        cancelUrl,
+      };
+
+      const telebirrResponse = await createTelebirrPayment(telebirrRequest);
+
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { prepayId: telebirrResponse.prepay_id }
+      });
+
+      res.json({
+        success: true,
+        gateway: 'telebirr',
+        orderId,
+        invoiceNumber,
+        checkoutUrl: telebirrResponse.checkout_url,
+        prepayId: telebirrResponse.prepay_id,
+      });
+    }
 
   } catch (error) {
     next(error);
   }
 });
 
+// Stripe webhook handler
+router.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res, next) => {
+  try {
+    const signature = req.headers['stripe-signature'] as string;
+
+    if (!signature) {
+      return res.status(400).json({ error: 'Missing stripe-signature header' });
+    }
+
+    const event = verifyStripeWebhook(req.body, signature);
+    console.log('📞 Stripe webhook received:', event.type);
+
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object as any;
+      const orderId = session.client_reference_id || session.metadata?.orderId;
+
+      if (!orderId) {
+        console.error('❌ No orderId in session');
+        return res.status(400).json({ error: 'Missing orderId' });
+      }
+
+      const payment = await prisma.payment.findUnique({
+        where: { orderId },
+        include: { user: true }
+      });
+
+      if (!payment) {
+        console.error('❌ Payment not found:', orderId);
+        return res.status(404).json({ error: 'Payment not found' });
+      }
+
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'COMPLETED',
+          telebirrTxId: session.payment_intent,
+        }
+      });
+
+      console.log('✅ Payment successful, updating subscription');
+
+      let planId = session.metadata?.planId;
+      if (!planId && payment.metadata) {
+        try {
+          const metadata = typeof payment.metadata === 'string'
+            ? JSON.parse(payment.metadata)
+            : payment.metadata;
+          planId = metadata.planId;
+        } catch (e) {
+          console.error('Error parsing metadata:', e);
+        }
+      }
+
+      if (planId) {
+        const plan = await prisma.subscriptionPlan.findUnique({
+          where: { id: planId }
+        });
+
+        if (plan) {
+          const endDate = new Date();
+          endDate.setDate(endDate.getDate() + plan.durationDays);
+
+          await prisma.subscription.upsert({
+            where: { userId: payment.userId },
+            update: {
+              planId: plan.id,
+              status: 'ACTIVE',
+              endDate,
+            },
+            create: {
+              userId: payment.userId,
+              planId: plan.id,
+              status: 'ACTIVE',
+              endDate,
+            }
+          });
+
+          console.log('✅ Subscription updated successfully');
+        }
+      }
+    } else if (event.type === 'checkout.session.expired') {
+      const session = event.data.object as any;
+      const orderId = session.client_reference_id || session.metadata?.orderId;
+
+      if (orderId) {
+        await prisma.payment.updateMany({
+          where: { orderId, status: 'PENDING' },
+          data: { status: 'CANCELLED' }
+        });
+      }
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('❌ Stripe webhook error:', error);
+    next(error);
+  }
+});
+
 // Telebirr payment callback
-router.post('/callback', async (req, res, next) => {
+router.post('/callback/telebirr', async (req, res, next) => {
   try {
     console.log('📞 Telebirr callback received:', req.body);
 

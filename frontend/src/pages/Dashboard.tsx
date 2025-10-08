@@ -4,6 +4,7 @@ import { MapPin, Calendar, CreditCard, TrendingUp, AlertCircle } from 'lucide-re
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { format, differenceInDays } from 'date-fns';
+import { StripeCheckoutModal } from '../components/StripeCheckoutModal';
 
 interface SubscriptionPlan {
   id: string;
@@ -27,6 +28,8 @@ export default function Dashboard() {
   const [usage, setUsage] = useState<Usage | null>(null);
   const [loading, setLoading] = useState(true);
   const [upgrading, setUpgrading] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [showStripeModal, setShowStripeModal] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -49,15 +52,28 @@ export default function Dashboard() {
     }
   };
 
-  const handleUpgrade = async (planId: string) => {
+  const handleUpgrade = async (planId: string, paymentGateway: 'stripe' | 'telebirr' = 'stripe') => {
     setUpgrading(planId);
 
     try {
       const response = await axios.post('/subscription/upgrade', { planId });
 
       if (response.data.requiresPayment) {
-        // Initiate payment
-        const paymentResponse = await axios.post('/payment/pay', { planId });
+        if (paymentGateway === 'stripe') {
+          const plan = plans.find(p => p.id === planId);
+          if (plan) {
+            setSelectedPlan(plan);
+            setShowStripeModal(true);
+            setUpgrading(null);
+          }
+          return;
+        }
+
+        const paymentResponse = await axios.post('/payment/pay', {
+          planId,
+          paymentGateway,
+          useEmbedded: false
+        });
         
         if (paymentResponse.data.checkoutUrl) {
           // Redirect to Telebirr checkout
@@ -94,6 +110,7 @@ export default function Dashboard() {
   const isExpired = daysRemaining === 0;
 
   return (
+    <>
     <div className="space-y-6">
       {/* Header */}
       <div>
@@ -293,7 +310,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                <div className="mt-6">
+                <div className="mt-6 space-y-2">
                   {isCurrent ? (
                     <div className="btn-primary w-full opacity-50 cursor-not-allowed">
                       Current Plan
@@ -303,22 +320,41 @@ export default function Dashboard() {
                       Downgrade Not Available
                     </div>
                   ) : (
-                    <button
-                      onClick={() => handleUpgrade(plan.id)}
-                      disabled={upgrading === plan.id}
-                      className="btn-primary w-full"
-                    >
-                      {upgrading === plan.id ? (
-                        <div className="flex items-center justify-center space-x-2">
-                          <div className="loading-spinner w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
-                          <span>Processing...</span>
-                        </div>
-                      ) : plan.price === 0 ? (
-                        'Downgrade'
+                    <>
+                      {plan.price > 0 ? (
+                        <>
+                          <button
+                            onClick={() => handleUpgrade(plan.id, 'stripe')}
+                            disabled={upgrading === plan.id}
+                            className="btn-primary w-full"
+                          >
+                            {upgrading === plan.id ? (
+                              <div className="flex items-center justify-center space-x-2">
+                                <div className="loading-spinner w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+                                <span>Processing...</span>
+                              </div>
+                            ) : (
+                              'Pay with Card (Stripe)'
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleUpgrade(plan.id, 'telebirr')}
+                            disabled={upgrading === plan.id}
+                            className="btn-secondary w-full"
+                          >
+                            Pay with Telebirr
+                          </button>
+                        </>
                       ) : (
-                        'Upgrade Now'
+                        <button
+                          onClick={() => handleUpgrade(plan.id)}
+                          disabled={upgrading === plan.id}
+                          className="btn-primary w-full"
+                        >
+                          Downgrade
+                        </button>
                       )}
-                    </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -327,5 +363,17 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+
+      {selectedPlan && (
+        <StripeCheckoutModal
+          plan={selectedPlan}
+          isOpen={showStripeModal}
+          onClose={() => {
+            setShowStripeModal(false);
+            setSelectedPlan(null);
+          }}
+        />
+      )}
+    </>
   );
 }
